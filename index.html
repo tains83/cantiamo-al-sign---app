@@ -51,7 +51,8 @@ const App = () => {
   const [playlists, setPlaylists] = useState([]);
   const [favorites, setFavorites] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('cs_favs_v3') || '[]');
+      const saved = localStorage.getItem('cs_favs_v3');
+      return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
   
@@ -59,9 +60,7 @@ const App = () => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   const [selectedSong, setSelectedSong] = useState(null);
-  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewerFontSize, setViewerFontSize] = useState(20);
   const [editorFontSize, setEditorFontSize] = useState(16);
@@ -71,41 +70,57 @@ const App = () => {
   const [newSongTitle, setNewSongTitle] = useState('');
   const [newSongCategory, setNewSongCategory] = useState('Ingresso');
   const [newSongLink, setNewSongLink] = useState('');
-  const [editingPlaylistId, setEditingPlaylistId] = useState(null);
-  const [newPlaylistName, setNewPlaylistName] = useState('');
-  const [selectedSongIds, setSelectedSongIds] = useState([]);
   
   const editorRef = useRef(null);
 
+  // FIX: Gestione autenticazione corretta per evitare custom-token-mismatch
   useEffect(() => {
     const initAuth = async () => {
       try {
+        // Se siamo in un ambiente con token custom valido lo usiamo, 
+        // altrimenti procediamo con l'accesso anonimo standard
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
+          try {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } catch (tokenErr) {
+            console.warn("Custom token failed, falling back to anonymous auth");
+            await signInAnonymously(auth);
+          }
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) { console.error("Auth error:", err); }
+      } catch (err) { 
+        console.error("Auth error:", err); 
+      }
     };
+
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!user) return;
     
+    // Listener per i canti pubblici
     const songsRef = collection(db, 'artifacts', appId, 'public', 'data', 'songs');
     const unsubSongs = onSnapshot(songsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setSongs(data.sort((a, b) => (a.title || "").localeCompare(b.title || "")));
-    }, (err) => console.error("Songs fetch error:", err));
+    }, (err) => {
+      console.error("Songs fetch error:", err);
+    });
 
+    // Listener per le playlist pubbliche
     const playlistsRef = collection(db, 'artifacts', appId, 'public', 'data', 'playlists');
     const unsubPlaylists = onSnapshot(playlistsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPlaylists(data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
-    }, (err) => console.error("Playlists fetch error:", err));
+    }, (err) => {
+      console.error("Playlists fetch error:", err);
+    });
 
     return () => { unsubSongs(); unsubPlaylists(); };
   }, [user]);
@@ -141,21 +156,38 @@ const App = () => {
     const content = editorRef.current?.innerHTML || "";
     if (!newSongTitle.trim() || !content || content === "<br>") return;
     setIsSaving(true);
-    const data = { title: newSongTitle, category: newSongCategory, link: newSongLink, text: content, updatedAt: serverTimestamp() };
+    const data = { 
+      title: newSongTitle, 
+      category: newSongCategory, 
+      link: newSongLink, 
+      text: content, 
+      updatedAt: serverTimestamp() 
+    };
     try {
-      if (editingId) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'songs', editingId), data);
-      else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'songs'), { ...data, createdAt: serverTimestamp() });
+      if (editingId) {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'songs', editingId), data);
+      } else {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'songs'), { 
+          ...data, 
+          createdAt: serverTimestamp() 
+        });
+      }
       setIsEditModalOpen(false);
-    } catch (err) { console.error("Save error:", err); }
+    } catch (err) { 
+      console.error("Save error:", err); 
+    }
     setIsSaving(false);
   };
 
   const deleteItem = async (type, id, e) => {
     if (e) e.stopPropagation();
     if (!isAdmin || !user) return;
-    if (!window.confirm("Eliminare definitivamente?")) return;
-    try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', type, id)); }
-    catch (err) { console.error("Delete error:", err); }
+    if (!window.confirm("Eliminare definitivamente questo elemento?")) return;
+    try { 
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', type, id)); 
+    } catch (err) { 
+      console.error("Delete error:", err); 
+    }
   };
 
   const toggleFav = (id, e) => {
@@ -201,7 +233,7 @@ const App = () => {
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Area Contenuto Principale */}
       <main className="flex-1 overflow-y-auto px-4 py-6 pb-28">
         {!user && (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-4">
@@ -260,7 +292,6 @@ const App = () => {
           </div>
         )}
 
-        {/* Altri tab (liste, preferiti) semplificati per brevità ma stilizzati */}
         {activeTab === 'playlists' && (
            <div className="text-center py-20">
              <ListMusic size={48} className="mx-auto text-slate-200 mb-4" />
@@ -271,17 +302,24 @@ const App = () => {
 
         {activeTab === 'favorites' && (
           <div className="space-y-3">
-             {songs.filter(s => favorites.includes(s.id)).map(song => (
-               <div key={song.id} onClick={() => setSelectedSong(song)} className="bg-white p-5 rounded-2xl border border-rose-100 flex justify-between items-center shadow-sm">
-                 <h3 className="font-bold text-slate-800">{song.title}</h3>
-                 <Heart size={20} className="text-rose-500" fill="currentColor" />
-               </div>
-             ))}
+             {songs.filter(s => favorites.includes(s.id)).length === 0 ? (
+                <div className="text-center py-20">
+                  <Heart size={40} className="mx-auto text-slate-200 mb-4" />
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Nessun preferito</p>
+                </div>
+             ) : (
+               songs.filter(s => favorites.includes(s.id)).map(song => (
+                 <div key={song.id} onClick={() => setSelectedSong(song)} className="bg-white p-5 rounded-2xl border border-rose-100 flex justify-between items-center shadow-sm">
+                   <h3 className="font-bold text-slate-800">{song.title}</h3>
+                   <Heart size={20} className="text-rose-500" fill="currentColor" />
+                 </div>
+               ))
+             )}
           </div>
         )}
       </main>
 
-      {/* Navigation Bar Premium */}
+      {/* Barra di Navigazione */}
       <nav className="fixed bottom-0 w-full max-w-lg bg-white/80 backdrop-blur-xl border-t border-slate-100 flex justify-around p-4 pb-8 z-40">
         {[
           { id: 'home', icon: Music, label: 'Canti' },
@@ -328,7 +366,7 @@ const App = () => {
         </div>
       )}
 
-      {/* Editor Canto (Overlay) */}
+      {/* Editor Canto */}
       {isEditModalOpen && (
         <div className="fixed inset-0 z-[140] bg-white flex flex-col animate-in slide-in-from-bottom duration-500">
           <div className="px-6 py-4 flex justify-between items-center border-b bg-slate-50/50">
@@ -369,7 +407,6 @@ const App = () => {
             </div>
           </div>
           
-          {/* Toolbar Formattazione */}
           <div className="bg-slate-100/50 border-y py-3 px-4 flex items-center justify-center gap-3 overflow-x-auto">
             <button onMouseDown={(e) => { e.preventDefault(); execCommand('bold'); }} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors"><Bold size={18}/></button>
             <button onMouseDown={(e) => { e.preventDefault(); execCommand('italic'); }} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors"><Italic size={18}/></button>
@@ -393,7 +430,7 @@ const App = () => {
         </div>
       )}
 
-      {/* Viewer Canto (Full Screen) */}
+      {/* Visualizzatore Canto */}
       {selectedSong && (
         <div className="fixed inset-0 z-[150] bg-white flex flex-col animate-in fade-in slide-in-from-right duration-300">
           <div className="px-6 py-4 flex justify-between items-center border-b bg-white/90 backdrop-blur-xl sticky top-0">
@@ -432,7 +469,6 @@ const App = () => {
         </div>
       )}
 
-      {/* Global Style per Editor HTML */}
       <style>{`
         [contenteditable]:empty:before {
           content: "Inizia a scrivere il testo del canto qui...";
@@ -442,11 +478,13 @@ const App = () => {
         .prose b, .prose strong { font-weight: 800; color: #1e293b; }
         .prose i, .prose em { font-style: italic; color: #475569; }
         
-        /* Smooth Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        
+        .animate-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
     </div>
   );
