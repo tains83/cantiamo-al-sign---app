@@ -1,493 +1,68 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  onAuthStateChanged, 
-  signInWithCustomToken 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc,
-  deleteDoc, 
-  doc,
-  serverTimestamp
-} from 'firebase/firestore';
-import { 
-  Music, Heart, ListMusic, Plus, Trash2, ChevronRight, Search, X, 
-  Bold, Italic, Save, AlignCenter, ChevronLeft, 
-  Loader2, PlusCircle, MinusCircle, Edit3, Youtube, ArrowUp, ArrowDown,
-  Settings, LogOut
-} from 'lucide-react';
-
-// --- CONFIGURAZIONE FIREBASE ---
-const firebaseConfig = {
-  apiKey: "AIzaSyA3ZNJyk_mLuWWcGKJ3mGmQ8g0XyY9DBCk",
-  authDomain: "cantiamo-al-signore---app-nuov.firebaseapp.com",
-  projectId: "cantiamo-al-signore---app-nuov",
-  storageBucket: "cantiamo-al-signore---app-nuov.firebasestorage.app",
-  messagingSenderId: "890055207022",
-  appId: "1:890055207022:web:25707f5cf3b9a3a780de7f"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'cantiamo-al-signore-v3';
-
-const ADMIN_PASSWORD = "SanRocco";
-
-const CATEGORIES = [
-  "Ingresso", "Gloria", "Salmo", "Alleluia", "Offertorio", 
-  "Santo", "Comunione", "Finale", "Mariano", "Spirito Santo", "Inno", "Altro"
-];
-
-const App = () => {
-  const [user, setUser] = useState(null);
-  const [songs, setSongs] = useState([]);
-  const [playlists, setPlaylists] = useState([]);
-  const [favorites, setFavorites] = useState(() => {
-    try {
-      const saved = localStorage.getItem('cs_favs_v3');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-  
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('home');
-  const [selectedSong, setSelectedSong] = useState(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [viewerFontSize, setViewerFontSize] = useState(20);
-  const [editorFontSize, setEditorFontSize] = useState(16);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const [editingId, setEditingId] = useState(null);
-  const [newSongTitle, setNewSongTitle] = useState('');
-  const [newSongCategory, setNewSongCategory] = useState('Ingresso');
-  const [newSongLink, setNewSongLink] = useState('');
-  
-  const editorRef = useRef(null);
-
-  // FIX: Gestione autenticazione corretta per evitare custom-token-mismatch
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        // Se siamo in un ambiente con token custom valido lo usiamo, 
-        // altrimenti procediamo con l'accesso anonimo standard
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          try {
-            await signInWithCustomToken(auth, __initial_auth_token);
-          } catch (tokenErr) {
-            console.warn("Custom token failed, falling back to anonymous auth");
-            await signInAnonymously(auth);
-          }
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) { 
-        console.error("Auth error:", err); 
-      }
-    };
-
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Cantiamo al Signore</title>
     
-    // Listener per i canti pubblici
-    const songsRef = collection(db, 'artifacts', appId, 'public', 'data', 'songs');
-    const unsubSongs = onSnapshot(songsRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSongs(data.sort((a, b) => (a.title || "").localeCompare(b.title || "")));
-    }, (err) => {
-      console.error("Songs fetch error:", err);
-    });
+    <!-- Supporto Tailwind CSS via CDN per una configurazione rapida su GitHub/Vercel -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Google: 'Inter' per l'interfaccia e 'Lora' (Serif) per i testi dei canti -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&family=Lora:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 
-    // Listener per le playlist pubbliche
-    const playlistsRef = collection(db, 'artifacts', appId, 'public', 'data', 'playlists');
-    const unsubPlaylists = onSnapshot(playlistsRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPlaylists(data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
-    }, (err) => {
-      console.error("Playlists fetch error:", err);
-    });
-
-    return () => { unsubSongs(); unsubPlaylists(); };
-  }, [user]);
-
-  useEffect(() => {
-    localStorage.setItem('cs_favs_v3', JSON.stringify(favorites));
-  }, [favorites]);
-
-  const execCommand = (command, value = null) => {
-    document.execCommand(command, false, value);
-    if (editorRef.current) editorRef.current.focus();
-  };
-
-  const openEditor = (song = null) => {
-    if (song) {
-      setEditingId(song.id);
-      setNewSongTitle(song.title);
-      setNewSongCategory(song.category || 'Ingresso');
-      setNewSongLink(song.link || '');
-      setTimeout(() => { if(editorRef.current) editorRef.current.innerHTML = song.text || ""; }, 100);
-    } else {
-      setEditingId(null);
-      setNewSongTitle('');
-      setNewSongCategory('Ingresso');
-      setNewSongLink('');
-      if (editorRef.current) editorRef.current.innerHTML = "";
-    }
-    setIsEditModalOpen(true);
-  };
-
-  const saveSong = async () => {
-    if (!isAdmin || isSaving || !user) return;
-    const content = editorRef.current?.innerHTML || "";
-    if (!newSongTitle.trim() || !content || content === "<br>") return;
-    setIsSaving(true);
-    const data = { 
-      title: newSongTitle, 
-      category: newSongCategory, 
-      link: newSongLink, 
-      text: content, 
-      updatedAt: serverTimestamp() 
-    };
-    try {
-      if (editingId) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'songs', editingId), data);
-      } else {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'songs'), { 
-          ...data, 
-          createdAt: serverTimestamp() 
-        });
-      }
-      setIsEditModalOpen(false);
-    } catch (err) { 
-      console.error("Save error:", err); 
-    }
-    setIsSaving(false);
-  };
-
-  const deleteItem = async (type, id, e) => {
-    if (e) e.stopPropagation();
-    if (!isAdmin || !user) return;
-    if (!window.confirm("Eliminare definitivamente questo elemento?")) return;
-    try { 
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', type, id)); 
-    } catch (err) { 
-      console.error("Delete error:", err); 
-    }
-  };
-
-  const toggleFav = (id, e) => {
-    e.stopPropagation();
-    setFavorites(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const filteredSongs = songs.filter(s => 
-    (s.title || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (s.category && s.category.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  return (
-    <div className="flex flex-col h-screen max-w-lg mx-auto bg-slate-50 overflow-hidden relative text-slate-900 font-sans shadow-2xl">
-      
-      {/* Header Premium */}
-      <header className={`px-6 pt-8 pb-6 text-white transition-all duration-500 z-30 shadow-xl ${isAdmin ? 'bg-emerald-600' : 'bg-indigo-700'}`}>
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
-              <Music size={24} className="text-white" />
-            </div>
-            <h1 className="text-2xl font-black tracking-tight font-serif italic">
-              Cantiamo <span className="font-sans not-italic font-light opacity-80 text-sm block -mt-1 tracking-widest uppercase">Al Signore</span>
-            </h1>
-          </div>
-          <button 
-            onClick={() => isAdmin ? setIsAdmin(false) : setShowLoginModal(true)} 
-            className="flex items-center gap-2 text-[10px] px-4 py-2 bg-white/10 hover:bg-white/20 rounded-full font-bold uppercase tracking-wider transition-colors backdrop-blur-sm border border-white/10"
-          >
-            {isAdmin ? <><LogOut size={12}/> Esci</> : <><Settings size={12}/> Admin</>}
-          </button>
-        </div>
-        <div className="relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 group-focus-within:text-white transition-colors" size={18} />
-          <input 
-            type="text" 
-            placeholder="Cerca un canto o una categoria..." 
-            className="w-full bg-white/10 focus:bg-white/20 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-white placeholder-white/40 outline-none text-sm transition-all focus:ring-2 ring-white/20" 
-            value={searchTerm} 
-            onChange={(e) => setSearchTerm(e.target.value)} 
-          />
-        </div>
-      </header>
-
-      {/* Area Contenuto Principale */}
-      <main className="flex-1 overflow-y-auto px-4 py-6 pb-28">
-        {!user && (
-          <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-4">
-            <Loader2 className="animate-spin text-indigo-500" size={40} />
-            <p className="text-xs font-bold uppercase tracking-[0.2em]">Sincronizzazione...</p>
-          </div>
-        )}
-
-        {user && activeTab === 'home' && (
-          <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {filteredSongs.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
-                <Music size={40} className="mx-auto text-slate-200 mb-4" />
-                <p className="text-slate-400 text-sm font-medium">Nessun canto trovato.</p>
-              </div>
-            ) : (
-              filteredSongs.map(song => (
-                <div 
-                  key={song.id} 
-                  className="group bg-white rounded-2xl p-4 flex justify-between items-center shadow-sm border border-transparent hover:border-indigo-100 hover:shadow-md transition-all cursor-pointer active:scale-[0.98]"
-                  onClick={() => setSelectedSong(song)}
-                >
-                  <div className="flex-1">
-                    <h3 className="font-bold text-slate-800 text-base leading-tight group-hover:text-indigo-700 transition-colors">{song.title}</h3>
-                    <div className="flex items-center gap-3 mt-1.5">
-                      <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-600 font-bold rounded-md uppercase tracking-wider">{song.category || 'Altro'}</span>
-                      {song.link && <Youtube size={14} className="text-red-500" />}
-                    </div>
-                  </div>
-                  <div className="flex gap-1 items-center">
-                    {isAdmin && (
-                      <div className="flex items-center mr-2 bg-slate-50 rounded-lg overflow-hidden border border-slate-100">
-                        <button onClick={(e) => { e.stopPropagation(); openEditor(song); }} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"><Edit3 size={16} /></button>
-                        <button onClick={(e) => deleteItem('songs', song.id, e)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={16} /></button>
-                      </div>
-                    )}
-                    <button 
-                      onClick={(e) => toggleFav(song.id, e)} 
-                      className={`p-2.5 rounded-xl transition-all active:scale-125 ${favorites.includes(song.id) ? 'bg-rose-50 text-rose-500' : 'bg-slate-50 text-slate-300 hover:text-rose-400'}`}
-                    >
-                      <Heart size={20} fill={favorites.includes(song.id) ? "currentColor" : "none"} />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-            
-            {isAdmin && (
-              <button 
-                onClick={() => openEditor()}
-                className="fixed bottom-24 right-6 w-16 h-16 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-2xl shadow-emerald-200 z-50 active:scale-90 hover:bg-emerald-700 transition-all group"
-              >
-                <Plus size={32} strokeWidth={2.5} className="group-hover:rotate-90 transition-transform duration-300" />
-              </button>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'playlists' && (
-           <div className="text-center py-20">
-             <ListMusic size={48} className="mx-auto text-slate-200 mb-4" />
-             <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.2em]">Gestione Liste</p>
-             <button onClick={() => alert("Funzione in aggiornamento")} className="mt-4 px-6 py-2 bg-white border border-slate-200 rounded-full text-xs font-black uppercase tracking-widest text-slate-400">Prossimamente</button>
-           </div>
-        )}
-
-        {activeTab === 'favorites' && (
-          <div className="space-y-3">
-             {songs.filter(s => favorites.includes(s.id)).length === 0 ? (
-                <div className="text-center py-20">
-                  <Heart size={40} className="mx-auto text-slate-200 mb-4" />
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Nessun preferito</p>
-                </div>
-             ) : (
-               songs.filter(s => favorites.includes(s.id)).map(song => (
-                 <div key={song.id} onClick={() => setSelectedSong(song)} className="bg-white p-5 rounded-2xl border border-rose-100 flex justify-between items-center shadow-sm">
-                   <h3 className="font-bold text-slate-800">{song.title}</h3>
-                   <Heart size={20} className="text-rose-500" fill="currentColor" />
-                 </div>
-               ))
-             )}
-          </div>
-        )}
-      </main>
-
-      {/* Barra di Navigazione */}
-      <nav className="fixed bottom-0 w-full max-w-lg bg-white/80 backdrop-blur-xl border-t border-slate-100 flex justify-around p-4 pb-8 z-40">
-        {[
-          { id: 'home', icon: Music, label: 'Canti' },
-          { id: 'playlists', icon: ListMusic, label: 'Liste' },
-          { id: 'favorites', icon: Heart, label: 'Preferiti' }
-        ].map((tab) => (
-          <button 
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)} 
-            className={`flex flex-col items-center gap-1.5 transition-all relative ${activeTab === tab.id ? 'text-indigo-600' : 'text-slate-400'}`}
-          >
-            <tab.icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
-            <span className="text-[9px] font-black uppercase tracking-widest">{tab.label}</span>
-            {activeTab === tab.id && <div className="absolute -bottom-2 w-1 h-1 bg-indigo-600 rounded-full" />}
-          </button>
-        ))}
-      </nav>
-
-      {/* Modale Login Admin */}
-      {showLoginModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <Settings size={32} />
-            </div>
-            <h2 className="text-center font-black mb-2 uppercase text-xs tracking-[0.2em] text-slate-400">Accesso Riservato</h2>
-            <p className="text-center text-[10px] text-slate-400 mb-8 italic">Inserisci il codice per gestire i canti</p>
-            <form onSubmit={(e) => { 
-              e.preventDefault(); 
-              if (e.target.pass.value === ADMIN_PASSWORD) { setIsAdmin(true); setShowLoginModal(false); } 
-              else { alert("Codice errato"); } 
-            }} className="space-y-4">
-              <input 
-                type="password" 
-                name="pass" 
-                placeholder="••••••••" 
-                className="w-full p-4 bg-slate-50 rounded-2xl text-center outline-none font-black text-2xl tracking-widest focus:ring-4 ring-indigo-50 border border-slate-100 transition-all" 
-                autoFocus 
-              />
-              <button className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase text-sm shadow-xl shadow-indigo-200 active:scale-95 transition-transform">Sblocca</button>
-              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-slate-400 text-[10px] font-black uppercase py-2 tracking-widest">Annulla</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Editor Canto */}
-      {isEditModalOpen && (
-        <div className="fixed inset-0 z-[140] bg-white flex flex-col animate-in slide-in-from-bottom duration-500">
-          <div className="px-6 py-4 flex justify-between items-center border-b bg-slate-50/50">
-            <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2"><X size={24}/></button>
-            <span className="text-[11px] font-black uppercase text-indigo-600 tracking-[0.2em]">{editingId ? 'Modifica Canto' : 'Nuovo Canto'}</span>
-            <button 
-              onClick={saveSong} 
-              disabled={isSaving} 
-              className="bg-emerald-600 text-white px-6 py-2.5 rounded-full font-black text-[11px] uppercase flex items-center gap-2 shadow-lg shadow-emerald-100 disabled:opacity-50"
-            >
-              {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salva
-            </button>
-          </div>
-          <div className="p-6 space-y-4 bg-white shadow-sm">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input 
-                value={newSongTitle} 
-                onChange={(e) => setNewSongTitle(e.target.value)} 
-                placeholder="Titolo del canto..." 
-                className="flex-1 p-4 bg-slate-50 rounded-2xl outline-none font-bold text-lg border border-slate-100 focus:bg-white focus:ring-4 ring-indigo-50 transition-all" 
-              />
-              <select 
-                value={newSongCategory} 
-                onChange={(e) => setNewSongCategory(e.target.value)} 
-                className="p-4 bg-indigo-50 rounded-2xl outline-none text-xs font-black uppercase text-indigo-600 border border-indigo-100"
-              >
-                {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-              </select>
-            </div>
-            <div className="relative">
-              <Youtube className="absolute left-4 top-1/2 -translate-y-1/2 text-red-500" size={16} />
-              <input 
-                value={newSongLink} 
-                onChange={(e) => setNewSongLink(e.target.value)} 
-                placeholder="ID Video YouTube (es: dQw4w9WgXcQ)" 
-                className="w-full p-4 pl-12 bg-slate-50 rounded-2xl outline-none text-xs border border-slate-100 text-slate-500" 
-              />
-            </div>
-          </div>
-          
-          <div className="bg-slate-100/50 border-y py-3 px-4 flex items-center justify-center gap-3 overflow-x-auto">
-            <button onMouseDown={(e) => { e.preventDefault(); execCommand('bold'); }} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors"><Bold size={18}/></button>
-            <button onMouseDown={(e) => { e.preventDefault(); execCommand('italic'); }} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors"><Italic size={18}/></button>
-            <button onMouseDown={(e) => { e.preventDefault(); execCommand('justifyCenter'); }} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors"><AlignCenter size={18}/></button>
-            <div className="w-px h-8 bg-slate-200 mx-2" />
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1 shadow-sm">
-               <button onClick={() => setEditorFontSize(f => Math.max(10, f-2))} className="text-slate-400 hover:text-indigo-600 p-2"><MinusCircle size={20}/></button>
-               <span className="text-xs font-black text-slate-600 w-6 text-center">{editorFontSize}</span>
-               <button onClick={() => setEditorFontSize(f => Math.min(40, f+2))} className="text-slate-400 hover:text-indigo-600 p-2"><PlusCircle size={20}/></button>
-            </div>
-          </div>
-
-          <div className="flex-1 p-8 overflow-y-auto bg-white">
-            <div 
-              ref={editorRef} 
-              contentEditable 
-              className="w-full min-h-[500px] outline-none font-serif leading-relaxed text-center prose max-w-none" 
-              style={{ fontSize: `${editorFontSize}px` }} 
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Visualizzatore Canto */}
-      {selectedSong && (
-        <div className="fixed inset-0 z-[150] bg-white flex flex-col animate-in fade-in slide-in-from-right duration-300">
-          <div className="px-6 py-4 flex justify-between items-center border-b bg-white/90 backdrop-blur-xl sticky top-0">
-            <button onClick={() => setSelectedSong(null)} className="p-2 -ml-2 text-slate-800 hover:bg-slate-50 rounded-full transition-colors"><ChevronLeft size={32}/></button>
-            <div className="text-center overflow-hidden flex-1 px-4">
-              <h2 className="font-black text-lg uppercase truncate text-slate-800 tracking-tight leading-none mb-1">{selectedSong.title}</h2>
-              <span className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em]">{selectedSong.category}</span>
-            </div>
-            <div className="flex items-center gap-2 bg-slate-100 rounded-2xl px-3 py-1.5">
-                 <button onClick={() => setViewerFontSize(f => Math.max(12, f - 2))} className="text-slate-400 hover:text-indigo-600"><MinusCircle size={24}/></button>
-                 <span className="text-xs font-black text-slate-700 w-8 text-center">{viewerFontSize}</span>
-                 <button onClick={() => setViewerFontSize(f => Math.min(60, f + 2))} className="text-slate-400 hover:text-indigo-600"><PlusCircle size={24}/></button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto px-8 py-12 text-center">
-            <div 
-              className="font-serif leading-[1.8] text-slate-800 max-w-2xl mx-auto whitespace-pre-wrap" 
-              style={{ fontSize: `${viewerFontSize}px` }} 
-              dangerouslySetInnerHTML={{ __html: selectedSong.text }} 
-            />
-            {selectedSong.link && (
-              <div className="mt-12 mb-8 pt-8 border-t border-slate-100 flex flex-col items-center">
-                <Youtube size={32} className="text-red-500 mb-2" />
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-300">Ascolta su YouTube</p>
-                <a 
-                  href={`https://youtube.com/watch?v=${selectedSong.link}`} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="mt-2 text-indigo-600 font-bold underline text-sm"
-                >
-                  Apri video ufficiale
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        [contenteditable]:empty:before {
-          content: "Inizia a scrivere il testo del canto qui...";
-          color: #cbd5e1;
-          font-style: italic;
+    <style>
+        /* Reset e stili globali per un feeling da App Nativa */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc; /* slate-50 */
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'Inter', sans-serif;
+            color: #1e293b;
         }
-        .prose b, .prose strong { font-weight: 800; color: #1e293b; }
-        .prose i, .prose em { font-style: italic; color: #475569; }
-        
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
-        
-        .animate-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-      `}</style>
-    </div>
-  );
-};
 
-export default App;
+        /* Configurazione specifica per il font dei canti */
+        .font-serif {
+            font-family: 'Lora', serif;
+        }
+
+        /* Impedisce lo scroll elastico (bounce) su dispositivi mobili per stabilità */
+        html, body {
+            overflow: hidden;
+            height: 100%;
+            position: fixed;
+            width: 100%;
+        }
+
+        /* Assicura che il contenitore React occupi tutto lo spazio disponibile */
+        #root {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        /* Stili per la barra di scorrimento (scrollbar) */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Il contenitore principale dove React monterà l'applicazione -->
+    <div id="root"></div>
+
+    <!-- Collegamento al file main.jsx che avvia la logica React (per progetti Vite) -->
+    <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
