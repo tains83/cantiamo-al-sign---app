@@ -1,428 +1,544 @@
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cantiamo al Signore</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React e ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel per JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Firebase SDK Compat -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Serif:ital,wght@0,400;0,700;1,400&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .font-serif { font-family: 'Noto Serif', serif; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        [contenteditable]:empty:before {
-            content: attr(placeholder);
-            color: #94a3b8;
-            pointer-events: none;
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged, 
+  signInWithCustomToken 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc,
+  deleteDoc, 
+  doc,
+  serverTimestamp,
+  query
+} from 'firebase/firestore';
+import { 
+  Music, Heart, ListMusic, Plus, Trash2, ChevronRight, Search, X, 
+  Bold, Italic, Save, AlignCenter, ChevronLeft, 
+  Loader2, PlusCircle, MinusCircle, Edit3, Youtube, ArrowUp, ArrowDown
+} from 'lucide-react';
+
+// Configurazione Firebase dell'utente
+const firebaseConfig = {
+  apiKey: "AIzaSyA3ZNJyk_mLuWWcGKJ3mGmQ8g0XyY9DBCk",
+  authDomain: "cantiamo-al-signore---app-nuov.firebaseapp.com",
+  projectId: "cantiamo-al-signore---app-nuov",
+  storageBucket: "cantiamo-al-signore---app-nuov.firebasestorage.app",
+  messagingSenderId: "890055207022",
+  appId: "1:890055207022:web:25707f5cf3b9a3a780de7f"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'cantiamo-al-signore-v3';
+
+// Password Amministratore
+const ADMIN_PASSWORD = "SanRocco";
+
+const CATEGORIES = [
+  "Ingresso", "Gloria", "Salmo", "Alleluia", "Offertorio", 
+  "Santo", "Comunione", "Finale", "Mariano", "Spirito Santo", "Inno", "Altro"
+];
+
+const App = () => {
+  const [user, setUser] = useState(null);
+  const [songs, setSongs] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cs_favs_v3') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('home');
+  const [selectedSong, setSelectedSong] = useState(null);
+  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewerFontSize, setViewerFontSize] = useState(20);
+  const [editorFontSize, setEditorFontSize] = useState(16);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [editingId, setEditingId] = useState(null);
+  const [newSongTitle, setNewSongTitle] = useState('');
+  const [newSongCategory, setNewSongCategory] = useState('Ingresso');
+  const [newSongLink, setNewSongLink] = useState('');
+  const [editingPlaylistId, setEditingPlaylistId] = useState(null);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [selectedSongIds, setSelectedSongIds] = useState([]);
+  
+  const editorRef = useRef(null);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token).catch(() => signInAnonymously(auth));
+        } else {
+          await signInAnonymously(auth);
         }
-    </style>
-</head>
-<body class="bg-slate-50">
-    <div id="root"></div>
+      } catch (err) { console.error(err); }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+  useEffect(() => {
+    if (!user) return;
+    const songsRef = collection(db, 'artifacts', appId, 'public', 'data', 'songs');
+    const unsubSongs = onSnapshot(songsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSongs(data.sort((a, b) => (a.title || "").localeCompare(b.title || "")));
+    }, (err) => console.error(err));
 
-        // --- ICONE ---
-        const Icon = ({ name, size = 24, className = "", fill = "none" }) => {
-            const icons = {
-                music: <path d="M9 18V5l12-2v13M9 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm12-3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>,
-                heart: <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>,
-                list: (
-                    <>
-                        <path d="M3 12h.01M3 18h.01M3 6h.01"/>
-                        <path d="M8 12h13M8 18h13M8 6h13"/>
-                    </>
-                ),
-                plus: <path d="M12 5v14M5 12h14"/>,
-                search: (
-                    <>
-                        <circle cx="11" cy="11" r="8"/>
-                        <path d="m21 21-4.3-4.3"/>
-                    </>
-                ),
-                chevronRight: <path d="m9 18 6-6-6-6"/>,
-                chevronLeft: <path d="m15 18-6-6 6-6"/>,
-                edit: (
-                    <>
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"/>
-                    </>
-                ),
-                x: <path d="M18 6 6 18M6 6l12 12"/>,
-                minusCircle: (
-                    <>
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M8 12h8"/>
-                    </>
-                ),
-                plusCircle: (
-                    <>
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M12 8v8M8 12h8"/>
-                    </>
-                )
-            };
-            return (
-                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                    {icons[name]}
-                </svg>
-            );
-        };
+    const playlistsRef = collection(db, 'artifacts', appId, 'public', 'data', 'playlists');
+    const unsubPlaylists = onSnapshot(playlistsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPlaylists(data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+    }, (err) => console.error(err));
 
-        // --- FIREBASE SETUP ---
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : {
-                apiKey: "",
-                authDomain: "cantiamo-al-signore---app-nuov.firebaseapp.com",
-                projectId: "cantiamo-al-signore---app-nuov",
-                storageBucket: "cantiamo-al-signore---app-nuov.firebasestorage.app",
-                messagingSenderId: "890055207022",
-                appId: "1:890055207022:web:25707f5cf3b9a3a780de7f"
-            };
-        
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cantiamo-app-v1';
-        
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+    return () => { unsubSongs(); unsubPlaylists(); };
+  }, [user]);
 
-        const ADMIN_PASSWORD = "SanRocco"; 
-        const CATEGORIES = ["Ingresso", "Gloria", "Salmo", "Alleluia", "Offertorio", "Santo", "Comunione", "Finale", "Mariano", "Spirito Santo", "Inno", "Altro"];
+  useEffect(() => {
+    localStorage.setItem('cs_favs_v3', JSON.stringify(favorites));
+  }, [favorites]);
 
-        const App = () => {
-            const [user, setUser] = useState(null);
-            const [songs, setSongs] = useState([]);
-            const [playlists, setPlaylists] = useState([]);
-            const [favorites, setFavorites] = useState(() => JSON.parse(localStorage.getItem('cs_favs_v5') || '[]'));
-            const [isAdmin, setIsAdmin] = useState(false);
-            const [showLoginModal, setShowLoginModal] = useState(false);
-            const [activeTab, setActiveTab] = useState('home');
-            const [selectedSong, setSelectedSong] = useState(null);
-            const [selectedPlaylist, setSelectedPlaylist] = useState(null);
-            const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-            const [searchTerm, setSearchTerm] = useState('');
-            const [viewerFontSize, setViewerFontSize] = useState(20);
-            const [isSaving, setIsSaving] = useState(false);
+  const execCommand = (command, value = null) => {
+    document.execCommand(command, false, value);
+    if (editorRef.current) editorRef.current.focus();
+  };
 
-            const [editingId, setEditingId] = useState(null);
-            const [newSongTitle, setNewSongTitle] = useState('');
-            const [newSongCategory, setNewSongCategory] = useState('Ingresso');
-            const editorRef = useRef(null);
+  const openEditor = (song = null) => {
+    if (song) {
+      setEditingId(song.id);
+      setNewSongTitle(song.title);
+      setNewSongCategory(song.category || 'Ingresso');
+      setNewSongLink(song.link || '');
+      setTimeout(() => { if(editorRef.current) editorRef.current.innerHTML = song.text || ""; }, 100);
+    } else {
+      setEditingId(null);
+      setNewSongTitle('');
+      setNewSongCategory('Ingresso');
+      setNewSongLink('');
+      if (editorRef.current) editorRef.current.innerHTML = "";
+    }
+    setIsEditModalOpen(true);
+  };
 
-            // REGOLA 3: Inizializzazione Autenticazione Robusta
-            useEffect(() => {
-                const initAuth = async () => {
-                    try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await auth.signInWithCustomToken(__initial_auth_token);
-                        } else {
-                            await auth.signInAnonymously();
-                        }
-                    } catch (err) {
-                        console.error("Auth Error:", err);
-                    }
-                };
-                initAuth();
-                return auth.onAuthStateChanged((u) => {
-                    if (u) {
-                        console.log("Utente autenticato:", u.uid);
-                        setUser(u);
-                    }
-                });
-            }, []);
+  const saveSong = async () => {
+    if (!isAdmin || isSaving || !user) return;
+    const content = editorRef.current?.innerHTML || "";
+    if (!newSongTitle.trim() || !content || content === "<br>") return;
+    setIsSaving(true);
+    const data = { title: newSongTitle, category: newSongCategory, link: newSongLink, text: content, updatedAt: serverTimestamp() };
+    try {
+      if (editingId) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'songs', editingId), data);
+      else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'songs'), { ...data, createdAt: serverTimestamp() });
+      setIsEditModalOpen(false);
+    } catch (err) { console.error(err); }
+    setIsSaving(false);
+  };
 
-            // REGOLA 1 & 3: Sottoscrizione dati solo DOPO auth
-            useEffect(() => {
-                if (!user) return;
+  const openPlaylistEditor = (pl = null) => {
+    if (pl) {
+      setEditingPlaylistId(pl.id);
+      setNewPlaylistName(pl.name);
+      setSelectedSongIds(pl.songIds || []);
+    } else {
+      setEditingPlaylistId(null);
+      setNewPlaylistName('');
+      setSelectedSongIds([]);
+    }
+    setIsPlaylistModalOpen(true);
+  };
 
-                console.log("Avvio sottoscrizioni Firestore...");
-                
-                // Definizione percorsi sicuri
-                const baseRef = db.collection('artifacts').doc(appId).collection('public').doc('data');
-                const songsRef = baseRef.collection('songs');
-                const playlistsRef = baseRef.collection('playlists');
-                
-                const unsubSongs = songsRef.onSnapshot(
-                    (snapshot) => {
-                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setSongs(data.sort((a, b) => (a.title || "").localeCompare(b.title || "")));
-                    },
-                    (err) => console.error("Errore permessi Songs:", err)
-                );
+  const moveSongInPlaylist = (index, direction) => {
+    const newIds = [...selectedSongIds];
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= newIds.length) return;
+    [newIds[index], newIds[targetIndex]] = [newIds[targetIndex], newIds[index]];
+    setSelectedSongIds(newIds);
+  };
 
-                const unsubPl = playlistsRef.onSnapshot(
-                    (snapshot) => {
-                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setPlaylists(data.sort((a, b) => (a.order || 0) - (b.order || 0)));
-                    },
-                    (err) => console.error("Errore permessi Playlists:", err)
-                );
+  const savePlaylist = async (e) => {
+    e.preventDefault();
+    if (!newPlaylistName || selectedSongIds.length === 0 || !user) return;
+    setIsSaving(true);
+    const data = { name: newPlaylistName, songIds: selectedSongIds, updatedAt: serverTimestamp() };
+    try {
+      if (editingPlaylistId) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'playlists', editingPlaylistId), data);
+      else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'playlists'), { ...data, createdAt: serverTimestamp() });
+      setIsPlaylistModalOpen(false);
+    } catch (err) { console.error(err); }
+    setIsSaving(false);
+  };
 
-                return () => {
-                    unsubSongs();
-                    unsubPl();
-                };
-            }, [user]);
+  const deleteItem = async (type, id, e) => {
+    if (e) e.stopPropagation();
+    if (!isAdmin || !user) return;
+    if (!window.confirm("Eliminare definitivamente?")) return;
+    try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', type, id)); }
+    catch (err) { console.error(err); }
+  };
 
-            useEffect(() => localStorage.setItem('cs_favs_v5', JSON.stringify(favorites)), [favorites]);
+  const toggleFav = (id, e) => {
+    e.stopPropagation();
+    setFavorites(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
 
-            const saveSong = async () => {
-                if (!isAdmin || isSaving || !newSongTitle.trim() || !user) return;
-                setIsSaving(true);
-                const data = { 
-                    title: newSongTitle, 
-                    category: newSongCategory, 
-                    text: editorRef.current?.innerHTML || "", 
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
-                };
-                try {
-                    const col = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('songs');
-                    if (editingId) {
-                        await col.doc(editingId).update(data);
-                    } else {
-                        await col.add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-                    }
-                    setIsEditModalOpen(false);
-                } catch (e) { 
-                    console.error("Errore salvataggio:", e); 
-                }
-                setIsSaving(false);
-            };
+  const filteredSongs = songs.filter(s => 
+    (s.title || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (s.category && s.category.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
-            const filteredSongs = songs.filter(s => (s.title||"").toLowerCase().includes(searchTerm.toLowerCase()));
+  return (
+    <div className="flex flex-col h-screen max-w-md mx-auto bg-white shadow-2xl overflow-hidden relative text-slate-900 font-sans">
+      
+      {/* Header */}
+      <header className={`p-4 text-white shadow-lg transition-colors duration-500 z-30 ${isAdmin ? 'bg-emerald-700' : 'bg-blue-700'}`}>
+        <div className="flex justify-between items-center mb-3">
+          <h1 className="text-xl font-black italic tracking-tighter flex items-center gap-2 uppercase font-serif">
+            <Music size={22}/> Cantiamo
+          </h1>
+          <button 
+            onClick={() => isAdmin ? setIsAdmin(false) : setShowLoginModal(true)} 
+            className="text-[9px] px-3 py-1 bg-white/20 rounded-full font-bold uppercase tracking-widest"
+          >
+            {isAdmin ? 'Esci Admin' : 'Admin'}
+          </button>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 text-white/50" size={16} />
+          <input 
+            type="text" 
+            placeholder="Cerca titolo o categoria..." 
+            className="w-full bg-white/20 border-none rounded-xl py-2 pl-9 pr-4 text-white placeholder-white/50 outline-none text-sm" 
+            value={searchTerm} 
+            onChange={(e) => setSearchTerm(e.target.value)} 
+          />
+        </div>
+      </header>
 
-            return (
-                <div className="flex flex-col h-screen max-w-md mx-auto bg-white shadow-2xl relative text-slate-900 overflow-hidden">
-                    <header className={`p-4 text-white shadow-lg transition-colors duration-500 ${isAdmin ? 'bg-emerald-700' : 'bg-blue-700'}`}>
-                        <div className="flex justify-between items-center mb-3">
-                            <h1 className="text-xl font-black italic flex items-center gap-2 uppercase tracking-tight">
-                                <Icon name="music" size={22}/> Cantiamo
-                            </h1>
-                            <button 
-                                onClick={() => isAdmin ? setIsAdmin(false) : setShowLoginModal(true)} 
-                                className="text-[10px] px-3 py-1 bg-white/20 rounded-full font-bold uppercase hover:bg-white/30 transition-colors"
-                            >
-                                {isAdmin ? 'Esci Admin' : 'Admin'}
-                            </button>
-                        </div>
-                        <div className="relative">
-                            <Icon name="search" size={16} className="absolute left-3 top-2.5 text-white/50" />
-                            <input 
-                                type="text" 
-                                placeholder="Cerca un canto..." 
-                                className="w-full bg-white/20 rounded-xl py-2 pl-9 pr-4 text-white placeholder-white/50 outline-none text-sm focus:bg-white/30 transition-all" 
-                                value={searchTerm} 
-                                onChange={e => setSearchTerm(e.target.value)} 
-                            />
-                        </div>
-                    </header>
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto p-4 pb-32">
+        {!user && (
+          <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+            <Loader2 className="animate-spin" size={32} />
+            <p className="text-sm font-bold animate-pulse uppercase tracking-widest">Inizializzazione...</p>
+          </div>
+        )}
 
-                    <main className="flex-1 overflow-y-auto p-4 pb-24 no-scrollbar">
-                        {!user && (
-                            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-700 mb-4"></div>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-center">Connessione sicura...</p>
-                            </div>
-                        )}
-
-                        {user && activeTab === 'home' && (
-                            <div className="divide-y divide-slate-100">
-                                {filteredSongs.map(song => (
-                                    <div key={song.id} className="py-3 flex justify-between items-center group">
-                                        <div className="flex-1 cursor-pointer" onClick={() => setSelectedSong(song)}>
-                                            <h3 className="font-bold text-slate-800 group-active:text-blue-700">{song.title}</h3>
-                                            <span className="text-[9px] text-blue-600 font-black uppercase tracking-wider">{song.category}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            {isAdmin && (
-                                                <button 
-                                                    onClick={(e) => { 
-                                                        e.stopPropagation();
-                                                        setEditingId(song.id); 
-                                                        setNewSongTitle(song.title); 
-                                                        setNewSongCategory(song.category); 
-                                                        setIsEditModalOpen(true); 
-                                                        setTimeout(() => { if(editorRef.current) editorRef.current.innerHTML = song.text || ""; }, 50); 
-                                                    }} 
-                                                    className="p-2 text-slate-300 hover:text-emerald-600 transition-colors"
-                                                >
-                                                    <Icon name="edit" size={18} />
-                                                </button>
-                                            )}
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setFavorites(f => f.includes(song.id) ? f.filter(id => id !== song.id) : [...f, song.id]);
-                                                }}
-                                                className={favorites.includes(song.id) ? 'text-rose-500' : 'text-slate-200 hover:text-rose-200'}
-                                            >
-                                                <Icon name="heart" size={20} fill={favorites.includes(song.id) ? "currentColor" : "none"} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {user && activeTab === 'playlists' && (
-                            <div className="space-y-3">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Programmi Celebrazioni</p>
-                                {playlists.map(pl => (
-                                    <div key={pl.id} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-200 active:scale-[0.98] transition-all" onClick={() => setSelectedPlaylist(pl)}>
-                                        <div className="flex-1">
-                                            <h3 className="font-black text-[13px] uppercase text-slate-700">{pl.name}</h3>
-                                            <p className="text-[9px] text-slate-400 font-bold uppercase">{pl.songIds?.length || 0} canti inseriti</p>
-                                        </div>
-                                        <Icon name="chevronRight" size={20} className="text-blue-200" />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {user && activeTab === 'favorites' && (
-                            <div className="space-y-2">
-                                {songs.filter(s => favorites.includes(s.id)).map(song => (
-                                    <div key={song.id} onClick={() => setSelectedSong(song)} className="bg-white border border-slate-100 rounded-xl p-4 flex justify-between items-center shadow-sm cursor-pointer hover:border-rose-100">
-                                        <h3 className="font-bold text-slate-800">{song.title}</h3>
-                                        <Icon name="heart" size={20} className="text-rose-500" fill="currentColor" />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </main>
-
-                    <nav className="fixed bottom-0 w-full max-w-md bg-white border-t flex justify-around p-3 pb-8 z-40 shadow-[0_-4px_10px_rgba(0,0,0,0.03)]">
-                        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 ${activeTab === 'home' ? 'text-blue-700' : 'text-slate-400'}`}>
-                            <Icon name="music" size={20} />
-                            <span className="text-[8px] font-black uppercase">Canti</span>
-                        </button>
-                        <button onClick={() => setActiveTab('playlists')} className={`flex flex-col items-center gap-1 ${activeTab === 'playlists' ? 'text-blue-700' : 'text-slate-400'}`}>
-                            <Icon name="list" size={20} />
-                            <span className="text-[8px] font-black uppercase">Programmi</span>
-                        </button>
-                        <button onClick={() => setActiveTab('favorites')} className={`flex flex-col items-center gap-1 ${activeTab === 'favorites' ? 'text-blue-700' : 'text-slate-400'}`}>
-                            <Icon name="heart" size={20} />
-                            <span className="text-[8px] font-black uppercase">Preferiti</span>
-                        </button>
-                    </nav>
-
-                    {/* MODALI VISUALIZZAZIONE */}
-                    {selectedSong && (
-                        <div className="fixed inset-0 z-[120] bg-white flex flex-col animate-in slide-in-from-bottom duration-300">
-                            <div className="p-3 flex justify-between items-center border-b bg-slate-50/50">
-                                <button onClick={() => setSelectedSong(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><Icon name="chevronLeft" size={28}/></button>
-                                <div className="text-center truncate px-4 flex-1">
-                                    <h2 className="font-black text-[13px] uppercase truncate text-slate-800 tracking-tight">{selectedSong.title}</h2>
-                                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-tighter">{selectedSong.category}</p>
-                                </div>
-                                <div className="flex items-center gap-1 bg-white border rounded-full px-2 py-1 shadow-sm">
-                                    <button onClick={() => setViewerFontSize(f => Math.max(12, f-2))} className="p-1"><Icon name="minusCircle" size={18}/></button>
-                                    <span className="text-[10px] font-black w-6 text-center">{viewerFontSize}</span>
-                                    <button onClick={() => setViewerFontSize(f => Math.min(60, f+2))} className="p-1"><Icon name="plusCircle" size={18}/></button>
-                                </div>
-                            </div>
-                            <div 
-                                className="flex-1 overflow-y-auto p-8 text-center font-serif leading-relaxed text-slate-800" 
-                                style={{ fontSize: `${viewerFontSize}px` }} 
-                                dangerouslySetInnerHTML={{ __html: selectedSong.text }} 
-                            />
-                        </div>
+        {user && activeTab === 'home' && (
+          <div className="space-y-1 relative">
+            {filteredSongs.length === 0 ? (
+              <p className="text-center py-10 text-slate-400 text-sm italic">Nessun canto trovato.</p>
+            ) : (
+              filteredSongs.map(song => (
+                <div key={song.id} className="bg-white border-b border-slate-100 py-3 flex justify-between items-center">
+                  <div className="flex-1 cursor-pointer" onClick={() => setSelectedSong(song)}>
+                    <h3 className="font-bold text-slate-800 text-[15px] leading-tight">{song.title}</h3>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[9px] text-blue-600 font-black uppercase tracking-wider">{song.category || 'Altro'}</span>
+                      {song.link && <Youtube size={12} className="text-red-500" />}
+                    </div>
+                  </div>
+                  <div className="flex gap-0.5 items-center">
+                    {isAdmin && (
+                      <>
+                        <button onClick={() => openEditor(song)} className="p-2 text-slate-300 hover:text-emerald-500"><Edit3 size={16} /></button>
+                        <button onClick={(e) => deleteItem('songs', song.id, e)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={16} /></button>
+                      </>
                     )}
-
-                    {showLoginModal && (
-                        <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-6 backdrop-blur-sm">
-                            <div className="bg-white w-full rounded-3xl p-8 max-w-xs shadow-2xl">
-                                <h2 className="text-center font-black mb-6 uppercase text-slate-400 tracking-widest text-[10px]">Accesso Amministratore</h2>
-                                <input 
-                                    type="password" 
-                                    placeholder="Inserisci password..." 
-                                    className="w-full p-4 bg-slate-100 rounded-2xl text-center mb-4 outline-none font-bold text-lg" 
-                                    onKeyDown={e => { 
-                                        if(e.key === 'Enter') { 
-                                            if(e.target.value === ADMIN_PASSWORD) { setIsAdmin(true); setShowLoginModal(false); } 
-                                            else { alert('Password non valida'); } 
-                                        } 
-                                    }} 
-                                    autoFocus 
-                                />
-                                <button onClick={() => setShowLoginModal(false)} className="w-full text-slate-400 text-[10px] font-black uppercase">Annulla</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {isEditModalOpen && (
-                        <div className="fixed inset-0 z-[130] bg-white flex flex-col">
-                            <div className="p-3 flex justify-between items-center bg-emerald-50 border-b">
-                                <button onClick={() => setIsEditModalOpen(false)} className="p-2 text-emerald-800"><Icon name="x" size={20}/></button>
-                                <button onClick={saveSong} disabled={isSaving} className="bg-emerald-600 text-white px-6 py-2 rounded-full font-black text-[10px] uppercase">
-                                    {isSaving ? "Salvataggio..." : "Salva"}
-                                </button>
-                            </div>
-                            <div className="p-4 space-y-3 flex-1 flex flex-col overflow-hidden">
-                                <input value={newSongTitle} onChange={e => setNewSongTitle(e.target.value)} placeholder="Titolo del canto..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-                                <select value={newSongCategory} onChange={e => setNewSongCategory(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl text-[10px] font-black uppercase outline-none">
-                                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                                <div ref={editorRef} contentEditable className="flex-1 p-6 outline-none font-serif text-center bg-slate-50 rounded-3xl overflow-y-auto border-2 border-dashed border-slate-200" placeholder="Testo del canto..."></div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {selectedPlaylist && (
-                        <div className="fixed inset-0 z-[115] bg-slate-50 flex flex-col">
-                            <div className="p-4 flex items-center bg-white border-b sticky top-0 shadow-sm">
-                                <button onClick={() => setSelectedPlaylist(null)} className="p-1"><Icon name="chevronLeft" size={24}/></button>
-                                <div className="flex-1 text-center pr-8">
-                                    <h2 className="font-black text-sm uppercase text-slate-800 leading-tight truncate px-2">{selectedPlaylist.name}</h2>
-                                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">Programma Celebrazione</p>
-                                </div>
-                            </div>
-                            <div className="p-4 space-y-3 overflow-y-auto no-scrollbar">
-                                {selectedPlaylist.songIds?.map((sid, i) => {
-                                    const s = songs.find(x => x.id === sid);
-                                    return s && (
-                                        <div key={sid} onClick={() => setSelectedSong(s)} className="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 border border-slate-100 active:scale-95 transition-transform cursor-pointer">
-                                            <span className="w-8 h-8 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-[11px] font-black border border-blue-100">{i+1}</span>
-                                            <div className="flex-1">
-                                                <h4 className="font-bold text-sm text-slate-800">{s.title}</h4>
-                                                <p className="text-[8px] uppercase font-black text-slate-400 tracking-wide">{s.category}</p>
-                                            </div>
-                                            <Icon name="chevronRight" size={18} className="text-blue-100" />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {isAdmin && activeTab === 'home' && (
-                        <button 
-                            onClick={() => { setEditingId(null); setNewSongTitle(''); setNewSongCategory('Ingresso'); setIsEditModalOpen(true); setTimeout(() => { if(editorRef.current) editorRef.current.innerHTML = ""; }, 50); }} 
-                            className="fixed bottom-24 right-6 w-14 h-14 bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center border-4 border-white z-50 hover:scale-110 active:scale-95 transition-all"
-                        >
-                            <Icon name="plus" size={32}/>
-                        </button>
-                    )}
+                    <button onClick={(e) => toggleFav(song.id, e)} className={`p-2 transition-transform active:scale-125 ${favorites.includes(song.id) ? 'text-rose-500' : 'text-slate-200'}`}>
+                      <Heart size={20} fill={favorites.includes(song.id) ? "currentColor" : "none"} />
+                    </button>
+                  </div>
                 </div>
-            );
-        };
+              ))
+            )}
+            
+            {/* Pulsante floating aggiunta canto per Admin */}
+            {isAdmin && (
+              <button 
+                onClick={() => openEditor()}
+                className="fixed bottom-24 right-6 w-14 h-14 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-xl z-50 active:scale-90 transition-transform"
+              >
+                <Plus size={32} strokeWidth={3} />
+              </button>
+            )}
+          </div>
+        )}
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+        {user && activeTab === 'playlists' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-1">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Programmi e Celebrazioni</p>
+              {isAdmin && (
+                <button 
+                  onClick={() => openPlaylistEditor()} 
+                  className="bg-emerald-600 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase shadow-lg shadow-emerald-100 active:scale-95"
+                >
+                  Nuova Lista
+                </button>
+              )}
+            </div>
+            {playlists.length === 0 ? (
+               <div className="text-center py-10 border-2 border-dashed border-slate-100 rounded-2xl text-slate-300">
+                 <p className="text-[10px] font-black uppercase">Nessuna lista creata</p>
+               </div>
+            ) : (
+              playlists.map(pl => (
+                <div 
+                  key={pl.id} 
+                  onClick={() => setSelectedPlaylist(pl)}
+                  className="bg-white border rounded-2xl p-4 shadow-sm border-slate-100 flex justify-between items-center cursor-pointer active:bg-slate-50 transition-all hover:border-blue-200"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+                      <ListMusic size={20} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-[14px] text-slate-700 tracking-tight">{pl.name}</h3>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{pl.songIds?.length || 0} canti</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {isAdmin && (
+                      <button onClick={(e) => { e.stopPropagation(); deleteItem('playlists', pl.id); }} className="p-2 text-slate-300 hover:text-red-500">
+                        <Trash2 size={16}/>
+                      </button>
+                    )}
+                    <ChevronRight size={18} className="text-slate-300" />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {user && activeTab === 'favorites' && (
+          <div className="space-y-2">
+             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">I tuoi preferiti</p>
+             {songs.filter(s => favorites.includes(s.id)).length === 0 ? (
+               <p className="text-center py-10 text-slate-300 text-sm italic">Ancora nessun preferito.</p>
+             ) : (
+               songs.filter(s => favorites.includes(s.id)).map(song => (
+                <div key={song.id} onClick={() => setSelectedSong(song)} className="bg-white border border-slate-100 rounded-xl p-4 flex justify-between items-center shadow-sm active:bg-slate-50">
+                  <h3 className="font-bold text-slate-800 text-md">{song.title}</h3>
+                  <Heart size={20} className="text-rose-500" fill="currentColor" />
+                </div>
+              ))
+             )}
+          </div>
+        )}
+      </main>
+
+      {/* Footer Nav */}
+      <nav className="fixed bottom-0 w-full max-w-md bg-white/90 backdrop-blur-md border-t flex justify-around p-3 pb-6 z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'home' ? 'text-blue-700 scale-110' : 'text-slate-400'}`}>
+          <Music size={22} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Canti</span>
+        </button>
+        <button onClick={() => setActiveTab('playlists')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'playlists' ? 'text-blue-700 scale-110' : 'text-slate-400'}`}>
+          <ListMusic size={22} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Liste</span>
+        </button>
+        <button onClick={() => setActiveTab('favorites')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'favorites' ? 'text-blue-700 scale-110' : 'text-slate-400'}`}>
+          <Heart size={22} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Preferiti</span>
+        </button>
+      </nav>
+
+      {/* Modale Login */}
+      {showLoginModal && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-6 backdrop-blur-sm">
+          <div className="bg-white w-full rounded-[2rem] p-8 max-w-xs shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-center font-black mb-6 uppercase text-[10px] tracking-widest text-slate-400">Pannello Admin</h2>
+            <form onSubmit={(e) => { 
+              e.preventDefault(); 
+              if (e.target.pass.value === ADMIN_PASSWORD) { setIsAdmin(true); setShowLoginModal(false); } 
+              else { alert("Codice errato"); } 
+            }} className="space-y-4">
+              <input type="password" name="pass" placeholder="Codice..." className="w-full p-4 bg-slate-100 rounded-2xl text-center outline-none font-black text-lg focus:ring-2 ring-blue-500" autoFocus />
+              <button className="w-full bg-blue-700 text-white py-4 rounded-2xl font-black uppercase text-sm shadow-lg shadow-blue-200">Sblocca</button>
+              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-slate-400 text-[10px] font-black uppercase py-2">Annulla</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Visualizzatore Lista (Programma) */}
+      {selectedPlaylist && (
+        <div className="fixed inset-0 z-[115] bg-slate-50 flex flex-col animate-in slide-in-from-right duration-300">
+          <div className="p-4 bg-white border-b flex justify-between items-center sticky top-0 z-10">
+            <button onClick={() => setSelectedPlaylist(null)} className="p-2 -ml-2"><ChevronLeft size={28} /></button>
+            <div className="text-center">
+              <h2 className="font-black text-sm uppercase tracking-tight">{selectedPlaylist.name}</h2>
+              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Programma Celebrazione</p>
+            </div>
+            {isAdmin ? (
+              <button onClick={() => { setSelectedPlaylist(null); openPlaylistEditor(selectedPlaylist); }} className="p-2 text-emerald-600"><Edit3 size={20}/></button>
+            ) : <div className="w-10"></div>}
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {selectedPlaylist.songIds?.map((sid, idx) => {
+              const s = songs.find(x => x.id === sid);
+              if (!s) return null;
+              return (
+                <div key={`${sid}-${idx}`} onClick={() => setSelectedSong(s)} className="bg-white p-4 rounded-2xl shadow-sm flex justify-between items-center border border-slate-100 active:scale-[0.98] transition-all">
+                  <div className="flex items-center gap-4">
+                    <span className="w-6 h-6 bg-blue-700 text-white text-[10px] font-black flex items-center justify-center rounded-lg">{idx + 1}</span>
+                    <div>
+                      <h4 className="font-bold text-slate-800">{s.title}</h4>
+                      <p className="text-[9px] font-black text-blue-500 uppercase">{s.category}</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-slate-300" />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Modale Editor Programma (Lista) */}
+      {isPlaylistModalOpen && (
+        <div className="fixed inset-0 z-[130] bg-white p-5 flex flex-col animate-in slide-in-from-bottom duration-300">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-black uppercase text-[12px] tracking-widest text-emerald-600">Editor Programma</h2>
+            <button onClick={() => setIsPlaylistModalOpen(false)} className="p-2 bg-slate-100 rounded-full"><X size={20}/></button>
+          </div>
+          <div className="space-y-4 flex-1 flex flex-col overflow-hidden">
+            <input 
+              value={newPlaylistName} 
+              onChange={(e) => setNewPlaylistName(e.target.value)} 
+              placeholder="Nome Lista (es: Messa S. Rocco)" 
+              className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none shadow-inner" 
+            />
+            
+            <div className="flex-1 flex flex-col overflow-hidden gap-4">
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                <p className="text-[9px] font-black text-slate-400 uppercase ml-1">Trascina o usa frecce per ordinare:</p>
+                {selectedSongIds.map((sid, idx) => {
+                  const s = songs.find(x => x.id === sid);
+                  return s ? (
+                    <div key={`${sid}-${idx}`} className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold">{s.title}</span>
+                        <span className="text-[8px] uppercase font-black text-emerald-600">{s.category}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => moveSongInPlaylist(idx, -1)} className="p-1.5 bg-white rounded-lg text-slate-400 active:text-blue-600 shadow-sm"><ArrowUp size={14}/></button>
+                        <button onClick={() => moveSongInPlaylist(idx, 1)} className="p-1.5 bg-white rounded-lg text-slate-400 active:text-blue-600 shadow-sm"><ArrowDown size={14}/></button>
+                        <button onClick={() => setSelectedSongIds(prev => prev.filter((_, i) => i !== idx))} className="p-1.5 bg-white rounded-lg text-rose-400 active:text-rose-600 shadow-sm ml-1"><X size={14}/></button>
+                      </div>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+
+              <div className="h-1/3 border-t pt-4 overflow-y-auto space-y-1">
+                <p className="text-[9px] font-black text-slate-400 uppercase ml-1 mb-2">Seleziona canti da aggiungere:</p>
+                {songs.map(s => (
+                  <div 
+                    key={s.id} 
+                    onClick={() => setSelectedSongIds([...selectedSongIds, s.id])}
+                    className="p-3 bg-slate-50 rounded-xl flex justify-between items-center cursor-pointer hover:bg-emerald-50 group"
+                  >
+                    <span className="text-xs font-bold text-slate-600 group-hover:text-emerald-700">{s.title}</span>
+                    <Plus size={14} className="text-slate-300 group-hover:text-emerald-500" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <button 
+            onClick={savePlaylist}
+            disabled={isSaving || !newPlaylistName}
+            className="w-full bg-emerald-600 text-white py-5 mt-4 rounded-2xl font-black text-sm uppercase shadow-2xl disabled:opacity-50"
+          >
+            {isSaving ? "Salvataggio..." : "Salva Programma"}
+          </button>
+        </div>
+      )}
+
+      {/* Editor Testo Canto */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-[140] bg-white flex flex-col animate-in slide-in-from-bottom duration-300">
+          <div className="p-3 flex justify-between items-center border-b bg-slate-50">
+            <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 p-1"><X size={20}/></button>
+            <span className="text-[10px] font-black uppercase text-emerald-600 tracking-widest">{editingId ? 'Modifica Canto' : 'Nuovo Canto'}</span>
+            <button onClick={saveSong} disabled={isSaving} className="bg-emerald-600 text-white px-5 py-2 rounded-full font-black text-[10px] uppercase flex items-center gap-2 shadow-md">
+              {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salva
+            </button>
+          </div>
+          <div className="p-3 space-y-3 border-b bg-white">
+            <div className="flex gap-2">
+              <input value={newSongTitle} onChange={(e) => setNewSongTitle(e.target.value)} placeholder="Titolo..." className="flex-1 p-3 bg-slate-50 rounded-xl outline-none font-bold text-sm border border-slate-100" />
+              <select value={newSongCategory} onChange={(e) => setNewSongCategory(e.target.value)} className="w-32 p-3 bg-slate-50 rounded-xl outline-none text-[9px] font-black uppercase text-blue-600 border border-slate-100">
+                {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+              </select>
+            </div>
+            <input value={newSongLink} onChange={(e) => setNewSongLink(e.target.value)} placeholder="Link YouTube (opzionale)..." className="w-full p-3 bg-slate-50 rounded-xl outline-none text-[11px] border border-slate-100 text-slate-500" />
+          </div>
+          <div className="bg-slate-50 border-b py-2 px-3 flex items-center justify-center gap-2">
+            <button onMouseDown={(e) => { e.preventDefault(); execCommand('bold'); }} className="p-2.5 bg-white border border-slate-200 rounded-lg"><Bold size={14}/></button>
+            <button onMouseDown={(e) => { e.preventDefault(); execCommand('italic'); }} className="p-2.5 bg-white border border-slate-200 rounded-lg"><Italic size={14}/></button>
+            <button onMouseDown={(e) => { e.preventDefault(); execCommand('justifyCenter'); }} className="p-2.5 bg-white border border-slate-200 rounded-lg"><AlignCenter size={14}/></button>
+            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1">
+               <button onClick={() => setEditorFontSize(f => Math.max(10, f-2))} className="text-slate-400 p-1"><MinusCircle size={18}/></button>
+               <span className="text-[10px] font-black text-slate-600">{editorFontSize}</span>
+               <button onClick={() => setEditorFontSize(f => Math.min(40, f+2))} className="text-slate-400 p-1"><PlusCircle size={18}/></button>
+            </div>
+          </div>
+          <div className="flex-1 p-6 overflow-y-auto bg-white">
+            <div ref={editorRef} contentEditable className="w-full min-h-[400px] outline-none font-serif leading-relaxed text-center" style={{ fontSize: `${editorFontSize}px` }} />
+          </div>
+        </div>
+      )}
+
+      {/* Visualizzatore Canto Singolo */}
+      {selectedSong && (
+        <div className="fixed inset-0 z-[150] bg-white flex flex-col animate-in fade-in slide-in-from-right duration-300">
+          <div className="p-3 flex justify-between items-center border-b bg-white/95 backdrop-blur-md sticky top-0">
+            <button onClick={() => setSelectedSong(null)} className="p-1.5 text-slate-800"><ChevronLeft size={32}/></button>
+            <div className="text-center overflow-hidden flex-1 px-4">
+              <h2 className="font-black text-[14px] uppercase truncate text-slate-800 tracking-tighter">{selectedSong.title}</h2>
+              <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">{selectedSong.category}</p>
+            </div>
+            <div className="flex items-center gap-1.5 bg-slate-100 rounded-full px-2 py-1">
+                 <button onClick={() => setViewerFontSize(f => Math.max(12, f - 2))} className="text-slate-400"><MinusCircle size={22}/></button>
+                 <span className="text-[11px] font-black text-slate-700 w-6 text-center">{viewerFontSize}</span>
+                 <button onClick={() => setViewerFontSize(f => Math.min(60, f + 2))} className="text-slate-400"><PlusCircle size={22}/></button>
+            </div>
+          </div>
+          <div 
+            className="flex-1 overflow-y-auto p-10 text-center font-serif leading-[1.8] text-slate-800" 
+            style={{ fontSize: `${viewerFontSize}px` }} 
+            dangerouslySetInnerHTML={{ __html: selectedSong.text }} 
+          />
+        </div>
+      )}
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+      `}</style>
+    </div>
+  );
+};
+
+export default App;
