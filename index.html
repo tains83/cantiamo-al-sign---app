@@ -2,255 +2,42 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cantiamo al Signore</title>
-    
-    <!-- Librerie React e Firebase (CDN) -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cantiamo al Signore - App</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Firebase SDK Compat -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
-    
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f8fafc;
-            margin: 0;
-            padding: 0;
-            -webkit-tap-highlight-color: transparent;
-            overflow: hidden;
-        }
-        #root {
-            height: 100vh;
-            width: 100vw;
-        }
-        .font-serif { font-family: 'Lora', serif; }
-        [contenteditable]:empty:before { content: "Scrivi il testo del canto..."; color: #cbd5e1; }
-        .animate-in { animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        .zoom-in { animation: zoom 0.2s ease-out forwards; }
-        @keyframes zoom { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
-    </style>
+    <!-- React e ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-<body>
+<body class="bg-gray-50">
     <div id="root"></div>
 
-    <!-- Script Unificato (React + Logica Firebase) -->
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-
-        // --- ICONE SVG CORRETTE (Elementi multipli avvolti in frammenti) ---
-        const Icon = ({ name, size = 24, className = "" }) => {
-            const icons = {
-                music: <path d="M9 18V5l12-2v13M9 10H5M9 14H5M9 18H5" />,
-                heart: <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />,
-                list: <React.Fragment><path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13" /></React.Fragment>,
-                plus: <path d="M12 5v14M5 12h14" />,
-                search: <React.Fragment><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></React.Fragment>,
-                chevronRight: <path d="m9 18 6-6-6-6" />,
-                chevronLeft: <path d="m15 18-6-6 6-6" />,
-                trash: <React.Fragment><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></React.Fragment>,
-                edit: <React.Fragment><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4Z" /></React.Fragment>,
-                youtube: <React.Fragment><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.42a2.78 2.78 0 0 0-1.94 2C1 8.11 1 12 1 12s0 3.89.46 5.58a2.78 2.78 0 0 0 1.94 2c1.72.42 8.6.42 8.6.42s6.88 0 8.6-.42a2.78 2.78 0 0 0 1.94-2C23 15.89 23 12 23 12s0-3.89-.46-5.58z" /><path d="m9.75 15.02 5.75-3.02-5.75-3.02v6.04z" /></React.Fragment>,
-                file: <React.Fragment><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></React.Fragment>,
-                minus: <path d="M5 12h14" />,
-                plusCircle: <React.Fragment><circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" /></React.Fragment>,
-                minusCircle: <React.Fragment><circle cx="12" cy="12" r="10" /><path d="M8 12h8" /></React.Fragment>
-            };
-            return (
-                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-                    {icons[name] || <circle cx="12" cy="12" r="10" />}
-                </svg>
-            );
-        };
-
-        // --- CONFIGURAZIONE FIREBASE ---
-        const firebaseConfig = JSON.parse(__firebase_config);
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cantiamo-v3-final';
-
-        const ADMIN_PASSWORD = "SanRocco";
-        const CATEGORIES = ["Ingresso", "Gloria", "Salmo", "Alleluia", "Offertorio", "Santo", "Comunione", "Finale", "Mariano", "Spirito Santo", "Altro"];
-        const LOGO_SRC = "icon.jpeg";
-
+        // Incolla qui il contenuto del tuo file App.jsx
+        // Sostituisci questo commento con il tuo codice React
+        
         function App() {
-            const [user, setUser] = useState(null);
-            const [songs, setSongs] = useState([]);
-            const [favorites, setFavorites] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('cs_favs_v4');
-                    return saved ? JSON.parse(saved) : [];
-                } catch { return []; }
-            });
-            
-            const [isAdmin, setIsAdmin] = useState(false);
-            const [showLoginModal, setShowLoginModal] = useState(false);
-            const [activeTab, setActiveTab] = useState('home');
-            const [selectedSong, setSelectedSong] = useState(null);
-            const [searchTerm, setSearchTerm] = useState('');
-            const [viewerFontSize, setViewerFontSize] = useState(20);
-            const [authStatus, setAuthStatus] = useState('loading');
-
-            useEffect(() => {
-                const initAuth = async () => {
-                    try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await auth.signInWithCustomToken(__initial_auth_token);
-                        } else {
-                            await auth.signInAnonymously();
-                        }
-                    } catch (err) {
-                        console.error("Auth error:", err);
-                        setAuthStatus('error');
-                    }
-                };
-                initAuth();
-                return auth.onAuthStateChanged(u => {
-                    setUser(u);
-                    if (u) setAuthStatus('success');
-                });
-            }, []);
-
-            useEffect(() => {
-                if (!user) return;
-                // Percorso corretto: /artifacts/{appId}/public/data/songs
-                const unsubSongs = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('songs')
-                    .onSnapshot(snap => {
-                        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setSongs(data.sort((a, b) => (a.title || "").localeCompare(b.title || "")));
-                    }, err => {
-                        console.error("Firestore error:", err);
-                    });
-                return () => unsubSongs();
-            }, [user]);
-
-            useEffect(() => {
-                localStorage.setItem('cs_favs_v4', JSON.stringify(favorites));
-            }, [favorites]);
-
-            const toggleFav = (id) => {
-                setFavorites(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-            };
-
-            const filteredSongs = songs.filter(s => 
-                (s.title || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (s.category || "").toLowerCase().includes(searchTerm.toLowerCase())
-            );
-
-            if (authStatus === 'loading') return (
-                <div className="h-full flex flex-col items-center justify-center bg-white">
-                    <img src={LOGO_SRC} className="w-24 h-24 rounded-full mb-4 animate-pulse shadow-lg object-cover" onError={(e) => e.target.style.display='none'} />
-                    <p className="text-indigo-600 font-black uppercase text-[10px] tracking-widest">Caricamento...</p>
-                </div>
-            );
-
             return (
-                <div className="flex flex-col h-full max-w-lg mx-auto bg-slate-50 relative shadow-2xl overflow-hidden">
-                    <header className={`p-6 pb-8 text-white transition-colors duration-500 ${isAdmin ? 'bg-emerald-600' : 'bg-indigo-700'}`}>
-                        <div className="flex justify-between items-center mb-6">
-                            <div className="flex items-center gap-3">
-                                <img src={LOGO_SRC} className="w-10 h-10 rounded-full border-2 border-white/20 object-cover" onError={(e) => e.target.src='https://via.placeholder.com/40'} />
-                                <h1 className="text-xl font-black italic tracking-tighter uppercase">Cantiamo</h1>
-                            </div>
-                            <button onClick={() => isAdmin ? setIsAdmin(false) : setShowLoginModal(true)} className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm">
-                                {isAdmin ? 'Admin OK' : 'Login'}
-                            </button>
-                        </div>
-                        <div className="relative">
-                            <Icon name="search" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
-                            <input 
-                                type="text" 
-                                placeholder="Cerca un canto..." 
-                                className="w-full bg-white/10 rounded-2xl py-3 pl-12 pr-4 text-white placeholder-white/40 outline-none border border-white/10 focus:bg-white/20 transition-all"
-                                value={searchTerm} 
-                                onChange={e => setSearchTerm(e.target.value)}
-                            />
-                        </div>
+                <div className="min-h-screen flex flex-col items-center justify-center p-4">
+                    <header className="text-center mb-8">
+                        <h1 className="text-4xl font-bold text-blue-600">Cantiamo al Signore</h1>
+                        <p className="text-gray-600 mt-2">Benvenuti nella tua raccolta di canti</p>
                     </header>
-
-                    <main className="flex-1 overflow-y-auto p-4 pb-24">
-                        <div className="space-y-3">
-                            {(activeTab === 'home' ? filteredSongs : songs.filter(s => favorites.includes(s.id))).map(song => (
-                                <div key={song.id} onClick={() => setSelectedSong(song)} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-slate-100 active:scale-[0.98] transition-all">
-                                    <div className="flex-1 truncate mr-4">
-                                        <h3 className="font-bold text-slate-800 truncate">{song.title}</h3>
-                                        <span className="text-[9px] font-black uppercase text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded">{song.category}</span>
-                                    </div>
-                                    <Icon name="chevronRight" className="text-slate-300" />
-                                </div>
-                            ))}
-                            {activeTab === 'fav' && favorites.length === 0 && (
-                                <div className="text-center py-20 text-slate-400">
-                                    <Icon name="heart" size={48} className="mx-auto mb-4 opacity-20" />
-                                    <p className="text-xs font-bold uppercase tracking-widest">Nessun preferito</p>
-                                </div>
-                            )}
-                        </div>
+                    <main className="w-full max-w-md bg-white rounded-lg shadow-md p-6">
+                        <p className="text-center text-gray-500 italic">
+                            Incolla il codice di App.jsx all'interno del tag script in index.html per visualizzare i tuoi contenuti.
+                        </p>
                     </main>
-
-                    {selectedSong && (
-                        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in">
-                            <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
-                                <button onClick={() => setSelectedSong(null)} className="p-2 text-slate-800"><Icon name="chevronLeft" size={28}/></button>
-                                <div className="text-center flex-1 truncate px-2">
-                                    <h2 className="font-black text-xs uppercase truncate">{selectedSong.title}</h2>
-                                    <span className="text-[9px] text-indigo-500 font-bold">{selectedSong.category}</span>
-                                </div>
-                                <div className="flex gap-1">
-                                    {selectedSong.youtubeUrl && <a href={selectedSong.youtubeUrl} target="_blank" className="p-2 text-rose-500 bg-rose-50 rounded-full"><Icon name="youtube" size={18}/></a>}
-                                    {selectedSong.sheetMusicUrl && <a href={selectedSong.sheetMusicUrl} target="_blank" className="p-2 text-indigo-500 bg-indigo-50 rounded-full"><Icon name="file" size={18}/></a>}
-                                </div>
-                            </div>
-                            
-                            <div className="flex justify-center gap-6 py-2 bg-slate-50 border-b text-slate-400">
-                                <button onClick={() => setViewerFontSize(f => Math.max(12, f-2))} className="flex items-center gap-1 text-[10px] font-bold uppercase"><Icon name="minusCircle" size={16}/> Carattere</button>
-                                <button onClick={() => setViewerFontSize(f => Math.min(40, f+2))} className="flex items-center gap-1 text-[10px] font-bold uppercase"><Icon name="plusCircle" size={16}/> Carattere</button>
-                            </div>
-
-                            <div className="flex-1 p-8 text-center overflow-y-auto">
-                                <div className="font-serif leading-relaxed max-w-md mx-auto whitespace-pre-wrap pb-20" style={{ fontSize: `${viewerFontSize}px` }} dangerouslySetInnerHTML={{ __html: selectedSong.text }} />
-                                <button onClick={() => toggleFav(selectedSong.id)} className={`w-full p-4 rounded-2xl flex items-center justify-center gap-2 font-bold uppercase text-xs mb-10 ${favorites.includes(selectedSong.id) ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>
-                                    <Icon name="heart" size={18} className={favorites.includes(selectedSong.id) ? "fill-rose-500 stroke-rose-500" : ""} />
-                                    {favorites.includes(selectedSong.id) ? "Rimuovi dai Preferiti" : "Aggiungi ai Preferiti"}
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    <nav className="fixed bottom-0 w-full max-w-lg bg-white/90 backdrop-blur-md border-t flex justify-around p-4 pb-8 shadow-xl z-50">
-                        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'home' ? 'text-indigo-600 scale-110' : 'text-slate-400'}`}>
-                            <Icon name="music" size={22} /><span className="text-[9px] font-black uppercase tracking-tighter">Canti</span>
-                        </button>
-                        <button onClick={() => setActiveTab('fav')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'fav' ? 'text-rose-600 scale-110' : 'text-slate-400'}`}>
-                            <Icon name="heart" size={22} /><span className="text-[9px] font-black uppercase tracking-tighter">Preferiti</span>
-                        </button>
-                    </nav>
-
-                    {showLoginModal && (
-                        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur flex items-center justify-center p-6">
-                            <div className="bg-white p-8 rounded-[40px] w-full max-w-xs shadow-2xl animate-in zoom-in">
-                                <h3 className="text-center font-black uppercase text-[10px] mb-8 tracking-[0.2em] text-slate-400">Accesso Admin</h3>
-                                <input id="passInput" type="password" placeholder="••••" className="w-full p-5 bg-slate-100 rounded-2xl mb-4 text-center font-black text-2xl tracking-[0.3em] outline-none border-2 border-transparent focus:border-indigo-500 transition-all shadow-inner" autoFocus onKeyDown={e => { if(e.key==='Enter') { if(e.target.value === ADMIN_PASSWORD) { setIsAdmin(true); setShowLoginModal(false); } else { e.target.value=''; alert('Sbagliato'); } } }} />
-                                <button onClick={() => { const v = document.getElementById('passInput').value; if(v === ADMIN_PASSWORD) { setIsAdmin(true); setShowLoginModal(false); } else alert('Sbagliato'); }} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all">Conferma</button>
-                                <button onClick={() => setShowLoginModal(false)} className="w-full mt-6 text-[10px] uppercase font-bold text-slate-300">Chiudi</button>
-                            </div>
-                        </div>
-                    )}
                 </div>
             );
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
+        // Rendering dell'app
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
         root.render(<App />);
     </script>
 </body>
