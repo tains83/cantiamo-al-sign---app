@@ -1,14 +1,68 @@
 <!DOCTYPE html>
 <html lang="it">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Cantiamo al Signore</title>
+    
+    <!-- Supporto Tailwind CSS via CDN per una configurazione rapida su GitHub/Vercel -->
     <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body>
+    
+    <!-- Font Google: 'Inter' per l'interfaccia e 'Lora' (Serif) per i testi dei canti -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&family=Lora:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <style>
+        /* Reset e stili globali per un feeling da App Nativa */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc; /* slate-50 */
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'Inter', sans-serif;
+            color: #1e293b;
+        }
+
+        /* Configurazione specifica per il font dei canti */
+        .font-serif {
+            font-family: 'Lora', serif;
+        }
+
+        /* Impedisce lo scroll elastico (bounce) su dispositivi mobili per stabilità */
+        html, body {
+            overflow: hidden;
+            height: 100%;
+            position: fixed;
+            width: 100%;
+        }
+
+        /* Assicura che il contenitore React occupi tutto lo spazio disponibile */
+        #root {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        /* Stili per la barra di scorrimento (scrollbar) */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #e2e8f0;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Il contenitore principale dove React monterà l'applicazione -->
     <div id="root"></div>
+
+    <!-- Collegamento al file main.jsx che avvia la logica React (per progetti Vite) -->
     <script type="module" src="/src/main.jsx"></script>
-  </body>
+</body>
 </html>
